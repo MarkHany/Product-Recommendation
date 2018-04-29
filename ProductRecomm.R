@@ -3,6 +3,9 @@ library(ggplot2)
 library(data.table)
 library(arules)
 library(xgboost)
+library(caret)
+library(mlr)
+library(OpenML)
 
 #read Data
 df<- fread("train_ver2.csv",nrows=1000000)
@@ -21,7 +24,7 @@ summary(df)
 #Preprocessing and Preparing Data
 sapply(df,function(x)any(is.na(x)))
 
-#age, ind_nuevo, antiguedad, indrel, indrel_1mes, tipodom, cod_prov, ind_nomina_ult1 and ind_nom_pens_ult1 are TRUE to have nulls
+#age, ind_nuevo, antiguedad, indrel, indrel_1mes, tipodom, cod_prov, ind_nomina_ult1 and ind_nom_pens_ult1 are "TRUE" to have nulls
 
 #Data Cleaning
 
@@ -29,8 +32,8 @@ sapply(df,function(x)any(is.na(x)))
 summary(df$age)
 sum(is.na(df$age))
 df$age[(df$age<18)] <- 18
-df$age[(df$age>100)] <- mean(df$age[(df$age>18) & (df$age<100)],na.rm = TRUE)
-df$age[is.na(df$age)] <- median(df$age,na.rm = TRUE)
+df$age[(df$age>100)] <- mean(df$age[(df$age>18) & (df$age<100)],na.rm = "TRUE")
+df$age[is.na(df$age)] <- median(df$age,na.rm = "TRUE")
 df$age <- round(df$age)
 
 summary(df$age)
@@ -48,7 +51,7 @@ summary(df$ind_nuevo)
 #antiguedad Cleaning
 summary(df$antiguedad)
 df$antiguedad[df$antiguedad<0]<- 0
-df$antiguedad[is.na(df$antiguedad)]<- min(df$antiguedad,na.rm=TRUE)
+df$antiguedad[is.na(df$antiguedad)]<- min(df$antiguedad,na.rm="TRUE")
 summary(df$antiguedad)
 
 #indrel Cleaning
@@ -90,7 +93,7 @@ sapply(df,function(x)any(is.na(x)))
 #ind_actividad_cliente Cleaning
 sum(is.na(df$ind_actividad_cliente))
 table(df$ind_actividad_cliente)
-df$ind_actividad_cliente[is.na(df$ind_actividad_cliente)] <- median(df$ind_actividad_cliente,na.rm = TRUE)
+df$ind_actividad_cliente[is.na(df$ind_actividad_cliente)] <- median(df$ind_actividad_cliente,na.rm = "TRUE")
 table(df$ind_actividad_cliente)
 
 
@@ -98,7 +101,7 @@ table(df$ind_actividad_cliente)
 #renta Cleaning
 sum(is.na(df$renta))
 summary(df$renta)
-df$renta[is.na(df$renta)] <- mean(df$renta,na.rm = TRUE)
+df$renta[is.na(df$renta)] <- mean(df$renta,na.rm = "TRUE")
 summary(df$renta)
 
 
@@ -118,7 +121,26 @@ df$ind_nom_pens_ult1[is.na(df$ind_nom_pens_ult1)] <- 0
 table(df$ind_nom_pens_ult1)
 
 
+df$pais_residencia[df$pais_residencia==""] <- "UNKNOWN"
+df$sexo[df$sexo==""]                       <- "UNKNOWN"
+df$ult_fec_cli_1t[df$ult_fec_cli_1t==""]   <- "UNKNOWN"
+df$ind_empleado[df$ind_empleado==""]       <- "UNKNOWN"
+df$indext[df$indext==""]                   <- "UNKNOWN"
+df$indresi[df$indresi==""]                 <- "UNKNOWN"
+df$conyuemp[df$conyuemp==""]               <- "UNKNOWN"
+df$segmento[df$segmento==""]               <- "UNKNOWN"
+df$nomprov[df$nomprov==""]                 <- "UNKNOWN"
+df$tiprel_1mes[df$tiprel_1mes==""]         <- "UNKNOWN"
+df$indfall[df$indfall==""]                 <- "N"
 
+#Remove ult_fec_cli_1t as almost all dates are unknown
+df <- df %>% select(-ult_fec_cli_1t)
+
+#Remove conyuemp as almost all records are unknown
+df <- df %>% select(-conyuemp)
+
+
+df$canal_entrada[df$canal_entrada==""]               <- "UNKNOWN"
 
 ####Data Visualisation
 
@@ -244,18 +266,6 @@ ggplot(data=df,aes(x=ind_nuevo)) + geom_bar(alpha=0.75,fill="tomato",color="blac
 ggplot(data=df,aes(x=renta)) + geom_bar(alpha=0.75,fill="tomato",color="black") + xlim(c(-1,250000)) + ggtitle("Gross Income Distribution") + 
   theme_bw() +theme(axis.title=element_text(size=24),plot.title=element_text(size=36),axis.text =element_text(size=16))
 
-df$pais_residencia[df$pais_residencia==""] <- "UNKNOWN"
-df$sexo[df$sexo==""]                       <- "UNKNOWN"
-df$ult_fec_cli_1t[df$ult_fec_cli_1t==""]   <- "UNKNOWN"
-df$ind_empleado[df$ind_empleado==""]       <- "UNKNOWN"
-df$indext[df$indext==""]                   <- "UNKNOWN"
-df$indresi[df$indresi==""]                 <- "UNKNOWN"
-df$conyuemp[df$conyuemp==""]               <- "UNKNOWN"
-df$segmento[df$segmento==""]               <- "UNKNOWN"
-df$nomprov[df$nomprov==""]                 <- "UNKNOWN"
-df$tiprel_1mes[df$tiprel_1mes==""]         <- "UNKNOWN"
-df$indfall[df$indfall==""]                 <- "N"
-
 #Province Distribution
 ggplot(df, aes(nomprov, fill = nomprov)) + geom_bar()+
   labs(title = "Province Distribution", x = "Province name", y = "Count of Customers")
@@ -317,15 +327,8 @@ ggplot(df, aes(indfall, fill = indfall)) + geom_bar()+
   labs(title = "Deceased Index Distribution", x = "Index", y = "Count of Customers")
 
 
+##############
 
-#Remove ult_fec_cli_1t as almost all dates are unknown
-df <- df %>% select(-ult_fec_cli_1t)
-
-#Remove conyuemp as almost all records are unknown
-df <- df %>% select(-conyuemp)
-
-
-df$canal_entrada[df$canal_entrada==""]               <- "UNKNOWN"
 
 
 #Relation of Age with Customer Seniority
@@ -361,8 +364,13 @@ ggplot(df, aes(fecha_dato, ind_cco_fin_ult1)) + geom_bar(stat = "identity", fill
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) + 
   labs(title = "Bar Chart")
 
-  
+# Idea of having each product as a target variable using (*logistic regression*)
 
+
+
+
+
+ 
 
 #Output Cleaned File
 write.csv(df,file="Clean_Train_Data.csv")
@@ -376,6 +384,158 @@ write.csv(df,file="Clean_Train_Data.csv")
 
 
 
+#Machine Learning Part
+
+#Training
+
+#Preparing the task
+
+Training_df <- df %>% select(-fecha_dato,-fecha_alta)
+Training_df <- Training_df %>% select(-conyuemp)
+Training_df <- Training_df %>% select(-pais_residencia)
+Training_df <- Training_df %>% select(-canal_entrada)
+set.seed(2000)
+
+labels = colnames(Training_df)[19:42]
+
+Training_df$ind_empleado <- as.factor(Training_df$ind_empleado)
+Training_df$pais_residencia <- as.factor(Training_df$pais_residencia)
+Training_df$sexo <- as.factor(Training_df$sexo)
+Training_df$tiprel_1mes <- as.factor(Training_df$tiprel_1mes)
+Training_df$indresi <- as.factor(Training_df$indresi)
+Training_df$indext <- as.factor(Training_df$indext)
+Training_df$canal_entrada <- as.factor(Training_df$canal_entrada)
+Training_df$indfall <- as.factor(Training_df$indfall)
+Training_df$nomprov <- as.factor(Training_df$nomprov)
+Training_df$segmento <- as.factor(Training_df$segmento)
+Training_df$conyuemp <- as.factor(Training_df$conyuemp)
+Training_df$ind_ahor_fin_ult1 <- as.logical(Training_df$ind_ahor_fin_ult1)
+Training_df$ind_aval_fin_ult1 <- as.logical(Training_df$ind_aval_fin_ult1)
+Training_df$ind_cco_fin_ult1 <- as.logical(Training_df$ind_cco_fin_ult1)
+Training_df$ind_cder_fin_ult1 <- as.logical(Training_df$ind_cder_fin_ult1)
+Training_df$ind_cno_fin_ult1 <- as.logical(Training_df$ind_cno_fin_ult1)
+Training_df$ind_ctju_fin_ult1 <- as.logical(Training_df$ind_ctju_fin_ult1)
+Training_df$ind_ctma_fin_ult1 <- as.logical(Training_df$ind_ctma_fin_ult1)
+Training_df$ind_ctop_fin_ult1 <- as.logical(Training_df$ind_ctop_fin_ult1)
+Training_df$ind_ctpp_fin_ult1 <- as.logical(Training_df$ind_ctpp_fin_ult1)
+Training_df$ind_deco_fin_ult1 <- as.logical(Training_df$ind_deco_fin_ult1)
+Training_df$ind_deme_fin_ult1 <- as.logical(Training_df$ind_deme_fin_ult1)
+Training_df$ind_dela_fin_ult1 <- as.logical(Training_df$ind_dela_fin_ult1)
+Training_df$ind_ecue_fin_ult1 <- as.logical(Training_df$ind_ecue_fin_ult1)
+Training_df$ind_fond_fin_ult1 <- as.logical(Training_df$ind_fond_fin_ult1)
+Training_df$ind_hip_fin_ult1 <- as.logical(Training_df$ind_hip_fin_ult1)
+Training_df$ind_plan_fin_ult1 <- as.logical(Training_df$ind_plan_fin_ult1)
+Training_df$ind_pres_fin_ult1 <- as.logical(Training_df$ind_pres_fin_ult1)
+Training_df$ind_reca_fin_ult1 <- as.logical(Training_df$ind_reca_fin_ult1)
+Training_df$ind_tjcr_fin_ult1 <- as.logical(Training_df$ind_tjcr_fin_ult1)
+Training_df$ind_valo_fin_ult1 <- as.logical(Training_df$ind_valo_fin_ult1)
+Training_df$ind_viv_fin_ult1 <- as.logical(Training_df$ind_viv_fin_ult1)
+Training_df$ind_nomina_ult1 <- as.logical(Training_df$ind_nomina_ult1)
+Training_df$ind_nom_pens_ult1 <- as.logical(Training_df$ind_nom_pens_ult1)
+Training_df$ind_recibo_ult1 <- as.logical(Training_df$ind_recibo_ult1)
+Training_df$ind_actividad_cliente <- as.factor(Training_df$ind_actividad_cliente)
+Training_df$ind_nuevo <- as.factor(Training_df$ind_nuevo)
+Training_df$indrel <- as.factor(Training_df$indrel)
+Training_df$indrel_1mes <- as.factor(Training_df$indrel_1mes)
+
+
+
+
+Training_df$ind_ahor_fin_ult1[Training_df$ind_ahor_fin_ult1== 1] <- "TRUE"
+Training_df$ind_ahor_fin_ult1[Training_df$ind_ahor_fin_ult1== 0] <- "FALSE"
+Training_df$ind_aval_fin_ult1[Training_df$ind_aval_fin_ult1== 1] <- "TRUE"
+Training_df$ind_aval_fin_ult1[Training_df$ind_aval_fin_ult1== 0] <- "FALSE"
+Training_df$ind_cco_fin_ult1[Training_df$ind_cco_fin_ult1== 1] <- "TRUE"
+Training_df$ind_cco_fin_ult1[Training_df$ind_cco_fin_ult1== 0] <- "FALSE"
+Training_df$ind_cder_fin_ult1[Training_df$ind_cder_fin_ult1== 1] <- "TRUE"
+Training_df$ind_cder_fin_ult1[Training_df$ind_cder_fin_ult1== 0] <- "FALSE"
+Training_df$ind_cno_fin_ult1[Training_df$ind_cno_fin_ult1== 1] <- "TRUE"
+Training_df$ind_cno_fin_ult1[Training_df$ind_cno_fin_ult1== 0] <- "FALSE"
+Training_df$ind_ctju_fin_ult1[Training_df$ind_ctju_fin_ult1== 1] <- "TRUE"
+Training_df$ind_ctju_fin_ult1[Training_df$ind_ctju_fin_ult1== 0] <- "FALSE"
+Training_df$ind_ctma_fin_ult1[Training_df$ind_ctma_fin_ult1== 1] <- "TRUE"
+Training_df$ind_ctma_fin_ult1[Training_df$ind_ctma_fin_ult1== 0] <- "FALSE"
+Training_df$ind_ctop_fin_ult1[Training_df$ind_ctop_fin_ult1== 1] <- "TRUE"
+Training_df$ind_ctop_fin_ult1[Training_df$ind_ctop_fin_ult1== 0] <- "FALSE"
+Training_df$ind_ctpp_fin_ult1[Training_df$ind_ctpp_fin_ult1== 1] <- "TRUE"
+Training_df$ind_ctpp_fin_ult1[Training_df$ind_ctpp_fin_ult1== 0] <- "FALSE"
+Training_df$ind_deco_fin_ult1[Training_df$ind_deco_fin_ult1== 1] <- "TRUE"
+Training_df$ind_deco_fin_ult1[Training_df$ind_deco_fin_ult1== 0] <- "FALSE"
+Training_df$ind_dela_fin_ult1[Training_df$ind_dela_fin_ult1== 1] <- "TRUE"
+Training_df$ind_dela_fin_ult1[Training_df$ind_dela_fin_ult1== 0] <- "FALSE"
+Training_df$ind_deme_fin_ult1[Training_df$ind_deme_fin_ult1== 1] <- "TRUE"
+Training_df$ind_deme_fin_ult1[Training_df$ind_deme_fin_ult1== 0] <- "FALSE"
+Training_df$ind_ecue_fin_ult1[Training_df$ind_ecue_fin_ult1== 1] <- "TRUE"
+Training_df$ind_ecue_fin_ult1[Training_df$ind_ecue_fin_ult1== 0] <- "FALSE"
+Training_df$ind_fond_fin_ult1[Training_df$ind_fond_fin_ult1== 1] <- "TRUE"
+Training_df$ind_fond_fin_ult1[Training_df$ind_fond_fin_ult1== 0] <- "FALSE"
+Training_df$ind_hip_fin_ult1[Training_df$ind_hip_fin_ult1== 1] <- "TRUE"
+Training_df$ind_hip_fin_ult1[Training_df$ind_hip_fin_ult1== 0] <- "FALSE"
+Training_df$ind_nom_pens_ult1[Training_df$ind_nom_pens_ult1== 1] <- "TRUE"
+Training_df$ind_nom_pens_ult1[Training_df$ind_nom_pens_ult1== 0] <- "FALSE"
+Training_df$ind_plan_fin_ult1[Training_df$ind_plan_fin_ult1== 1] <- "TRUE"
+Training_df$ind_plan_fin_ult1[Training_df$ind_plan_fin_ult1== 0] <- "FALSE"
+Training_df$ind_pres_fin_ult1[Training_df$ind_pres_fin_ult1== 1] <- "TRUE"
+Training_df$ind_pres_fin_ult1[Training_df$ind_pres_fin_ult1== 0] <- "FALSE"
+Training_df$ind_reca_fin_ult1[Training_df$ind_reca_fin_ult1== 1] <- "TRUE"
+Training_df$ind_reca_fin_ult1[Training_df$ind_reca_fin_ult1== 0] <- "FALSE"
+Training_df$ind_recibo_ult1[Training_df$ind_recibo_ult1== 1] <- "TRUE"
+Training_df$ind_recibo_ult1[Training_df$ind_recibo_ult1== 0] <- "FALSE"
+Training_df$ind_nomina_ult1[Training_df$ind_nomina_ult1== 1] <- "TRUE"
+Training_df$ind_nomina_ult1[Training_df$ind_nomina_ult1== 0] <- "FALSE"
+Training_df$ind_tjcr_fin_ult1[Training_df$ind_tjcr_fin_ult1== 1] <- "TRUE"
+Training_df$ind_tjcr_fin_ult1[Training_df$ind_tjcr_fin_ult1== 0] <- "FALSE"
+Training_df$ind_valo_fin_ult1[Training_df$ind_valo_fin_ult1== 1] <- "TRUE"
+Training_df$ind_valo_fin_ult1[Training_df$ind_valo_fin_ult1== 0] <- "FALSE"
+Training_df$ind_viv_fin_ult1[Training_df$ind_viv_fin_ult1== 1] <- "TRUE"
+Training_df$ind_viv_fin_ult1[Training_df$ind_viv_fin_ult1== 0] <- "FALSE"
+
+
+df.task = makeMultilabelTask(id="multi",data = Training_df,target = labels)
+df.task
+
+
+#I chose the classifier chain approach together with a decision tree for the binary classification problems
+
+binary.learner = makeLearner("classif.rpart")
+lrncc = makeMultilabelClassifierChainsWrapper(binary.learner)
+
+
+#Train & Predict
+
+n = getTaskSize(df.task)
+train.set = seq(1, n, by = 2)
+test.set = seq(2, n, by = 2)
+
+df.mod.cc = train(lrncc, df.task, subset = train.set)
+df.pred.cc = predict(df.mod.cc, task = df.task, subset = test.set)
+df.pred.cc
+
+
+performance(df.pred.cc)
+listMeasures("multilabel")
+
+performance(df.pred.cc, measures = list(featperc, multilabel.subset01, multilabel.f1, multilabel.acc),model = df.mod.cc)
+
+
+#Trying Binary Relevance
+
+lrnbr = makeMultilabelBinaryRelevanceWrapper(binary.learner)
+
+df.mod.br = train(lrnbr, df.task, subset = train.set)
+df.pred.br = predict(df.mod.br, task = df.task, subset = test.set)
+
+performance(df.pred.br, measures = list(featperc,multilabel.hamloss, multilabel.subset01, multilabel.f1, multilabel.acc),model = df.mod.br)
+
+
+
+rdesc = makeResampleDesc("Subsample", iters = 10, split = 2/3)
+r = resample(lrncc, df.task, rdesc, measures = multilabel.subset01)
+
+
+
+
+#Data Visualization After Prediction
 
 
 
@@ -385,4 +545,6 @@ write.csv(df,file="Clean_Train_Data.csv")
 
 
 
-
+#Draft
+sum(df$month=="1" & df$ind_cco_fin_ult1) - sum(df$month=="2" & df$ind_cco_fin_ult1)
+sum(df$month=="2" & df$ind_cco_fin_ult1)
