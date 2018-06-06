@@ -7,8 +7,9 @@ library(caret)
 library(mlr)
 library(OpenML)
 
+rm(list = ls())
 #read Data
-df<- fread("train_ver2.csv",nrows=1000000)
+df<- fread("D:/Mark/Study/GP/Product Recommendation/Product Recommendation/train_ver2.csv",nrows=1000000)
 str(df)
 summary(df)
 
@@ -40,6 +41,7 @@ summary(df$age)
 
 ggplot(data=df,aes(x=age)) + geom_bar(alpha=0.75,fill="tomato",color="black") + xlim(c(18,100)) + ggtitle("Age Distribution") + 
   theme_bw() +theme(axis.title=element_text(size=24),plot.title=element_text(size=36),axis.text =element_text(size=16))
+
 
 #ind_nuevo Cleaning
 sum(is.na(df$ind_nuevo))
@@ -142,7 +144,7 @@ df <- df %>% select(-conyuemp)
 
 df$canal_entrada[df$canal_entrada==""]               <- "UNKNOWN"
 
-####Data Visualisation
+####Data Visualisation####
 
 str(df)
 
@@ -367,11 +369,6 @@ ggplot(df, aes(fecha_dato, ind_cco_fin_ult1)) + geom_bar(stat = "identity", fill
 # Idea of having each product as a target variable using (*logistic regression*)
 
 
-
-
-
- 
-
 #Output Cleaned File
 write.csv(df,file="Clean_Train_Data.csv")
 
@@ -394,21 +391,13 @@ Training_df <- df %>% select(-fecha_dato,-fecha_alta)
 Training_df <- Training_df %>% select(-conyuemp)
 Training_df <- Training_df %>% select(-pais_residencia)
 Training_df <- Training_df %>% select(-canal_entrada)
+Training_df <- Training_df %>% select(-ncodpers)
 set.seed(2000)
 
-labels = colnames(Training_df)[19:42]
+labels = colnames(Training_df)[16:39]
+labels
 
-Training_df$ind_empleado <- as.factor(Training_df$ind_empleado)
-Training_df$pais_residencia <- as.factor(Training_df$pais_residencia)
-Training_df$sexo <- as.factor(Training_df$sexo)
-Training_df$tiprel_1mes <- as.factor(Training_df$tiprel_1mes)
-Training_df$indresi <- as.factor(Training_df$indresi)
-Training_df$indext <- as.factor(Training_df$indext)
-Training_df$canal_entrada <- as.factor(Training_df$canal_entrada)
-Training_df$indfall <- as.factor(Training_df$indfall)
-Training_df$nomprov <- as.factor(Training_df$nomprov)
-Training_df$segmento <- as.factor(Training_df$segmento)
-Training_df$conyuemp <- as.factor(Training_df$conyuemp)
+
 Training_df$ind_ahor_fin_ult1 <- as.logical(Training_df$ind_ahor_fin_ult1)
 Training_df$ind_aval_fin_ult1 <- as.logical(Training_df$ind_aval_fin_ult1)
 Training_df$ind_cco_fin_ult1 <- as.logical(Training_df$ind_cco_fin_ult1)
@@ -433,6 +422,15 @@ Training_df$ind_viv_fin_ult1 <- as.logical(Training_df$ind_viv_fin_ult1)
 Training_df$ind_nomina_ult1 <- as.logical(Training_df$ind_nomina_ult1)
 Training_df$ind_nom_pens_ult1 <- as.logical(Training_df$ind_nom_pens_ult1)
 Training_df$ind_recibo_ult1 <- as.logical(Training_df$ind_recibo_ult1)
+
+Training_df$ind_empleado <- as.factor(Training_df$ind_empleado)
+Training_df$sexo <- as.factor(Training_df$sexo)
+Training_df$tiprel_1mes <- as.factor(Training_df$tiprel_1mes)
+Training_df$indresi <- as.factor(Training_df$indresi)
+Training_df$indext <- as.factor(Training_df$indext)
+Training_df$indfall <- as.factor(Training_df$indfall)
+Training_df$nomprov <- as.factor(Training_df$nomprov)
+Training_df$segmento <- as.factor(Training_df$segmento)
 Training_df$ind_actividad_cliente <- as.factor(Training_df$ind_actividad_cliente)
 Training_df$ind_nuevo <- as.factor(Training_df$ind_nuevo)
 Training_df$indrel <- as.factor(Training_df$indrel)
@@ -490,6 +488,7 @@ Training_df$ind_valo_fin_ult1[Training_df$ind_valo_fin_ult1== 0] <- "FALSE"
 Training_df$ind_viv_fin_ult1[Training_df$ind_viv_fin_ult1== 1] <- "TRUE"
 Training_df$ind_viv_fin_ult1[Training_df$ind_viv_fin_ult1== 0] <- "FALSE"
 
+sapply(Training_df,function(x)any(is.na(x)))
 
 df.task = makeMultilabelTask(id="multi",data = Training_df,target = labels)
 df.task
@@ -501,7 +500,7 @@ binary.learner = makeLearner("classif.rpart")
 lrncc = makeMultilabelClassifierChainsWrapper(binary.learner)
 
 
-#Train & Predict
+#Train & Predict####
 
 n = getTaskSize(df.task)
 train.set = seq(1, n, by = 2)
@@ -515,7 +514,7 @@ df.pred.cc
 performance(df.pred.cc)
 listMeasures("multilabel")
 
-performance(df.pred.cc, measures = list(featperc, multilabel.subset01, multilabel.f1, multilabel.acc),model = df.mod.cc)
+performance(df.pred.cc, measures = list(featperc, multilabel.subset01, multilabel.f1, multilabel.acc, multilabel.ppv,multilabel.tpr,timetrain,timeboth,timepredict),model = df.mod.cc)
 
 
 #Trying Binary Relevance
@@ -525,24 +524,17 @@ lrnbr = makeMultilabelBinaryRelevanceWrapper(binary.learner)
 df.mod.br = train(lrnbr, df.task, subset = train.set)
 df.pred.br = predict(df.mod.br, task = df.task, subset = test.set)
 
-performance(df.pred.br, measures = list(featperc,multilabel.hamloss, multilabel.subset01, multilabel.f1, multilabel.acc),model = df.mod.br)
+df.pred.br
 
+performance(df.pred.br, measures = list(featperc,multilabel.hamloss, multilabel.subset01, multilabel.f1, multilabel.acc, multilabel.tpr, timeboth),model = df.mod.br)
 
-
-rdesc = makeResampleDesc("Subsample", iters = 10, split = 2/3)
+rdesc = makeResampleDesc("Subsample", iters = 3, split = 2/3)
 r = resample(lrncc, df.task, rdesc, measures = multilabel.subset01)
 
 
 
 
 #Data Visualization After Prediction
-
-
-
-
-
-
-
 
 
 #Draft
